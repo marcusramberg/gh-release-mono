@@ -124,9 +124,10 @@ if [[ -z "${latest_tag:-}" ]]; then
   exit 1
 fi
 
-# Extract the numeric part and bump
+# Extract the numeric part and bump (preserve zero-padding width)
 current_num="${latest_tag##*"${TAG_TEMPLATE}"}"
-next_num=$((current_num + 1))
+pad_width=${#current_num}
+next_num=$(printf "%0${pad_width}d" $((10#${current_num} + 1)))
 next_tag="${SERVICE}/${TAG_TEMPLATE}${next_num}"
 
 green "Latest release: ${latest_tag}"
