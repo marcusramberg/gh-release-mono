@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+set -e
+
+help() {
+  cat <<EOF
+Usage: gh release-mono <service>
+
+Create the next numbered release for a service.
+
+Finds the latest release tag matching <service>/r<N>, bumps N by one,
+and creates a new release with generated notes.
+
+Example:
+    gh release-next myservice
+    # finds myservice/r08, creates myservice/r09
+
+Options:
+    -h, --help          Show this help message
+    -d, --dry-run       Print what would happen without creating the release
+    -t, --tag-template  Override the tag pattern (default: r)
+    -y, --yes           Skip interactive confirmation
+
+Environment Variables:
+    GH_RELEASE_NEXT_DRY_RUN       Set to 'true' for dry-run mode
+    GH_RELEASE_NEXT_TAG_TEMPLATE  Set tag prefix (default: 'r')
+EOF
+}
+
+# Helper to convert string values to boolean
+to_bool() {
+  local val
+  val="$(echo "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$val" in
+  1 | true | yes | on) echo true ;;
+  0 | false | no | off | "") echo false ;;
+  *) echo false ;;
+  esac
+}
+
+# Defaults
+DRY_RUN=$(to_bool "${GH_RELEASE_NEXT_DRY_RUN:-false}")
+TAG_TEMPLATE="${GH_RELEASE_NEXT_TAG_TEMPLATE:-r}"
+SKIP_CONFIRM=false
+
+# Parse arguments
+SERVICE=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+  -h | --help)
+    help
+    exit 0
+    ;;
+  -d | --dry-run)
+    DRY_RUN=true
+    ;;
+  -y | --yes)
+    SKIP_CONFIRM=true
+    ;;
+  -t | --tag-template)
+    shift
+    if [[ -z "$1" || "$1" == --* ]]; then
+      echo "Error: --tag-template requires a value" >&2
+      exit 1
+    fi
+    TAG_TEMPLATE="$1"
+    ;;
+  -*)
+    echo "Error: unknown option '$1'" >&2
+    help
+    exit 1
+    ;;
+  *)
+    SERVICE="$1"
+    ;;
+  esac
+  shift
+done
+
+if [[ -z "$SERVICE" ]]; then
+  echo "Error: service name is required" >&2
+  help
+  exit 1
+fi
+
+# Color output
+function color_echo() {
+  no_color='\033[0m'
+  local color=$1
+  shift
+  echo -e "$color$*$no_color"
+}
+
+function cyan() {
+  color_echo '\033[0;96m' "$@"
+}
+
+function green() {
+  color_echo '\033[0;92m' "$@"
+}
+
+function red() {
+  color_echo '\033[0;31m' "$@"
+}
+
+function yellow() {
+  color_echo '\033[0;93m' "$@"
+}
+
+# Print env var overrides
+if "$DRY_RUN"; then yellow "DRY_RUN is enabled (no release will be created)"; fi
+if [[ "$TAG_TEMPLATE" != "r" ]]; then yellow "TAG_TEMPLATE is set to '${TAG_TEMPLATE}'"; fi
+
+# Find latest release tag for the service
+cyan "Looking up latest release for '${SERVICE}'..."
+
+latest_tag=$(gh release list --json tagName --limit 200 |
+  jq -r '.[].tagName' |
+  grep -E "^${SERVICE}/${TAG_TEMPLATE}[0-9]+$" |
+  sort -t"${TAG_TEMPLATE}" -k2 -n |
+  tail -n 1)
+
+if [[ -z "${latest_tag:-}" ]]; then
+  red "Error: no existing release found for service '${SERVICE}' matching pattern '${SERVICE}/${TAG_TEMPLATE}<N>'"
+  exit 1
+fi
+
+# Extract the numeric part and bump
+current_num="${latest_tag##*"${TAG_TEMPLATE}"}"
+next_num=$((current_num + 1))
+next_tag="${SERVICE}/${TAG_TEMPLATE}${next_num}"
+
+green "Latest release: ${latest_tag}"
+cyan "Next release:   ${next_tag}"
+
+if "$DRY_RUN"; then
+  yellow "Dry run — would run:"
+  echo "  gh release create '${next_tag}' --notes-start-tag '${latest_tag}' --generate-notes --fail-on-no-commits"
+  exit 0
+fi
+
+# Interactive confirmation
+if ! "$SKIP_CONFIRM"; then
+  echo
+  cyan "Release summary:"
+  echo "  Service:      ${SERVICE}"
+  echo "  Tag:          ${next_tag}"
+  echo "  Previous tag: ${latest_tag}"
+  echo
+  read -r -p "Create release? [y/N] " confirm
+  case "$confirm" in
+  [yY][eE][sS] | [yY]) ;;
+  *)
+    yellow "Aborted."
+    exit 0
+    ;;
+  esac
+fi
+
+echo
+cyan "Creating release '${next_tag}'..."
+
+gh release create "${next_tag}" \
+  --notes-start-tag "${latest_tag}" \
+  --generate-notes \
+  --fail-on-no-commits
+
+green "Release '${next_tag}' created!"
