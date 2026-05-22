@@ -177,6 +177,9 @@ if ! "$SKIP_CONFIRM"; then
   echo "  Tag:          ${next_tag}"
   echo "  Previous tag: ${latest_tag}"
   echo
+  echo "Changes:"
+  git fetch --tags && git log --oneline "${latest_tag}..origin/main"
+  echo
   read -r -p "Create release? [y/N] " confirm
   case "$confirm" in
   [yY][eE][sS] | [yY]) ;;
