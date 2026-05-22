@@ -25,6 +25,7 @@ Options:
     -d, --dry-run       Print what would happen without creating the release
     -t, --tag-template  Override the tag pattern (default: r)
     -y, --yes           Skip interactive confirmation
+    -w, --wait          Wait for all CI checks on main to pass before releasing
 
 Environment Variables:
     GH_RELEASE_NEXT_DRY_RUN       Set to 'true' for dry-run mode

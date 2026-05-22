@@ -19,6 +19,7 @@ Options:
     -d, --dry-run       Print what would happen without creating the release
     -t, --tag-template  Override the tag pattern (default: r)
     -y, --yes           Skip interactive confirmation
+    -w, --wait          Wait for all CI checks on main to pass before releasing
 
 Environment Variables:
     GH_RELEASE_NEXT_DRY_RUN       Set to 'true' for dry-run mode
@@ -41,6 +42,7 @@ to_bool() {
 DRY_RUN=$(to_bool "${GH_RELEASE_NEXT_DRY_RUN:-false}")
 TAG_TEMPLATE="${GH_RELEASE_NEXT_TAG_TEMPLATE:-r}"
 SKIP_CONFIRM=false
+WAIT_CHECKS=false
 
 # Parse arguments
 SERVICE=""
@@ -55,6 +57,9 @@ while [ $# -gt 0 ]; do
     ;;
   -y | --yes)
     SKIP_CONFIRM=true
+    ;;
+  -w | --wait)
+    WAIT_CHECKS=true
     ;;
   -t | --tag-template)
     shift
@@ -105,6 +110,31 @@ function red() {
 function yellow() {
   color_echo '\033[0;93m' "$@"
 }
+
+# Wait for checks on main
+if "$WAIT_CHECKS"; then
+  repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+  cyan "Waiting for all checks on main to pass..."
+  while true; do
+    sha=$(gh api "repos/${repo}/branches/main" -q .commit.sha)
+    runs=$(gh api "repos/${repo}/commits/${sha}/check-runs" -q '.check_runs[] | {status:.status,conclusion:.conclusion}')
+    if [[ -z "$runs" ]]; then
+      yellow "No checks found on main, proceeding..."
+      break
+    fi
+    if echo "$runs" | jq -e 'select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out")' > /dev/null 2>&1; then
+      red "One or more checks on main failed. Aborting release."
+      exit 1
+    fi
+    pending=$(echo "$runs" | jq -r 'select(.status != "completed") | .status' | wc -l)
+    if [[ "$pending" -eq 0 ]]; then
+      green "All checks on main passed!"
+      break
+    fi
+    yellow "${pending} check(s) still pending... retrying in 15s"
+    sleep 15
+  done
+fi
 
 # Print env var overrides
 if "$DRY_RUN"; then yellow "DRY_RUN is enabled (no release will be created)"; fi
