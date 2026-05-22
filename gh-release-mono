@@ -122,7 +122,7 @@ if "$WAIT_CHECKS"; then
       yellow "No checks found on main, proceeding..."
       break
     fi
-    if echo "$runs" | jq -e 'select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out")' > /dev/null 2>&1; then
+    if echo "$runs" | jq -e 'select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out")' >/dev/null 2>&1; then
       red "One or more checks on main failed. Aborting release."
       exit 1
     fi
@@ -192,7 +192,6 @@ cyan "Creating release '${next_tag}'..."
 
 gh release create "${next_tag}" \
   --notes-start-tag "${latest_tag}" \
-  --generate-notes \
-  --fail-on-no-commits
+  --generate-notes
 
 green "Release '${next_tag}' created!"
