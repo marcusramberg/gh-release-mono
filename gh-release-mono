@@ -165,7 +165,7 @@ cyan "Next release:   ${next_tag}"
 
 if "$DRY_RUN"; then
   yellow "Dry run — would run:"
-  echo "  gh release create '${next_tag}' --notes-start-tag '${latest_tag}' --generate-notes --fail-on-no-commits"
+  echo "  gh release create '${next_tag}' --notes-start-tag '${latest_tag}' --generate-notes"
   exit 0
 fi
 
